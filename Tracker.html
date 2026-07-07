@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>題目追蹤器</title>
+<meta name="theme-color" content="#12151A" />
+<link rel="icon" href="data:,">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #12151A;
+    color: #E7E3D8;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    padding: 32px 16px 80px;
+    display: flex;
+    justify-content: center;
+  }
+  .wrap { width: 100%; max-width: 640px; }
+  .eyebrow {
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    color: #8A9A97;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+  }
+  h1 { font-size: 30px; font-weight: 700; margin: 0 0 20px; color: #F3EFE3; letter-spacing: -0.01em; }
+  .card {
+    background: #1B1F26;
+    border: 1px solid #2A2F38;
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+  }
+  .book-switcher {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #1B1F26;
+    border: 1px solid #2A2F38;
+    border-radius: 10px;
+    padding: 12px 14px;
+    color: #F3EFE3;
+    cursor: pointer;
+    text-align: left;
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .book-menu {
+    background: #1B1F26;
+    border: 1px solid #2A2F38;
+    border-radius: 10px;
+    padding: 8px;
+    margin-bottom: 20px;
+  }
+  .book-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .book-row.active { background: #2A2F38; }
+  .book-row input[type=text] {
+    flex: 1;
+    background: #12151A;
+    border: 1px solid #D97A3F;
+    border-radius: 6px;
+    padding: 5px 8px;
+    color: #F3EFE3;
+    font-size: 14px;
+  }
+  .mono { font-family: 'Courier New', monospace; font-size: 11px; color: #7C8894; }
+  .icon-btn {
+    background: transparent; border: none; color: #5C6572; cursor: pointer; padding: 4px;
+  }
+  .stats-row { display: flex; align-items: center; gap: 18px; }
+  .stat-num { font-family: 'Courier New', monospace; font-size: 26px; font-weight: 700; color: #F3EFE3; line-height: 1; }
+  .stat-num span { color: #5C6572; font-size: 16px; }
+  .stat-label { font-size: 11px; color: #7C8894; margin-top: 4px; }
+  .bar-track { height: 8px; border-radius: 999px; background: #12151A; overflow: hidden; border: 1px solid #2A2F38; }
+  .bar-fill { height: 100%; transition: width 0.35s ease; }
+  textarea, input[type=text] {
+    background: #12151A;
+    border: 1px solid #2A2F38;
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: #F3EFE3;
+    font-size: 14px;
+    outline: none;
+    font-family: inherit;
+  }
+  textarea { resize: vertical; line-height: 1.5; width: 100%; }
+  .add-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .add-row textarea { flex: 1 1 220px; }
+  .add-side { display: flex; flex-direction: column; gap: 8px; flex: 0 1 160px; }
+  button.primary {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    background: #D97A3F; border: none; border-radius: 8px; padding: 10px 16px;
+    color: #12151A; font-weight: 600; font-size: 14px; cursor: pointer;
+  }
+  .hint { font-size: 11px; color: #5C6572; margin-top: 8px; }
+  .err { color: #E08072; font-size: 12px; margin-top: 4px; }
+  .filters { display: flex; gap: 8px; margin-bottom: 14px; align-items: center; flex-wrap: wrap; }
+  .filter-btn {
+    background: transparent; border: 1px solid #2A2F38; color: #8A9A97;
+    border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer;
+  }
+  .filter-btn.active { background: #2A2F38; color: #F3EFE3; }
+  .search-wrap { position: relative; margin-left: auto; flex: 1 1 160px; }
+  .search-wrap input { width: 100%; border-radius: 999px; padding: 8px 12px 8px 30px; box-sizing: border-box; }
+  .search-icon { position: absolute; left: 10px; top: 9px; color: #5C6572; font-size: 13px; }
+  .empty {
+    border: 1px dashed #2A2F38; border-radius: 10px; padding: 36px 20px;
+    text-align: center; color: #5C6572; font-size: 13px;
+  }
+  .item {
+    display: flex; align-items: center; gap: 12px;
+    background: #1B1F26; border: 1px solid #2A2F38; border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 8px;
+  }
+  .item.done { opacity: 0.72; }
+  .check {
+    flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%;
+    border: 2px solid #4A5560; background: transparent; color: transparent;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    transition: transform 0.18s ease;
+    font-weight: bold;
+  }
+  .check.done { border-color: #4FA98F; background: #4FA98F; color: #12151A; }
+  .check.stamp { transform: scale(1.25) rotate(-8deg); }
+  .item-name {
+    font-size: 14.5px; color: #F3EFE3; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; cursor: text;
+  }
+  .item-name.done { text-decoration: line-through; text-decoration-color: #5C6572; }
+  .item-name-input {
+    width: 100%; background: #12151A; border: 1px solid #D97A3F; border-radius: 6px;
+    padding: 4px 8px; color: #F3EFE3; font-size: 14.5px; box-sizing: border-box;
+  }
+  .tag-badge {
+    display: inline-block; margin-top: 4px; font-family: 'Courier New', monospace;
+    font-size: 10.5px; color: #8A9A97; background: #12151A; border: 1px solid #2A2F38;
+    border-radius: 4px; padding: 1px 6px;
+  }
+  .footer-note { margin-top: 24px; font-size: 11px; color: #4A5560; text-align: center; }
+  .add-book-row { display: flex; gap: 6px; padding: 2px 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">練習紀錄 · Problem Log</div>
+  <h1>題目追蹤器</h1>
+
+  <button class="book-switcher" id="bookSwitcher"></button>
+  <div class="book-menu" id="bookMenu" style="display:none;"></div>
+
+  <div id="bookEmpty" class="empty" style="display:none;">先點上面建立第一本題本</div>
+
+  <div id="mainContent" style="display:none;">
+    <div class="card stats-row">
+      <div style="min-width:84px;">
+        <div class="stat-num" id="statNum"></div>
+        <div class="stat-label">已完成</div>
+      </div>
+      <div style="flex:1;">
+        <div class="bar-track"><div class="bar-fill" id="barFill"></div></div>
+        <div class="stat-label" id="pctLabel"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="add-row">
+        <textarea id="nameInput" rows="3" placeholder="題目名稱，一行一題，可直接貼上多行&#10;每行可用 | 加上該題自己的分類，例如：&#10;第2題-第1節（偏好）-無主題 | 初學"></textarea>
+        <div class="add-side">
+          <input type="text" id="tagInput" placeholder="分類（選填，沒用 | 指定時套用到全部）" />
+          <button class="primary" id="addBtn">＋ 新增</button>
+        </div>
+      </div>
+      <div class="hint">提示：Ctrl/⌘ + Enter 可快速送出</div>
+      <div class="err" id="errMsg" style="display:none;"></div>
+    </div>
+
+    <div class="filters">
+      <button class="filter-btn active" data-filter="all">全部</button>
+      <button class="filter-btn" data-filter="todo">未做</button>
+      <button class="filter-btn" data-filter="done">已做</button>
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="搜尋..." />
+      </div>
+    </div>
+
+    <div id="itemList"></div>
+  </div>
+
+  <div class="footer-note">資料會自動儲存在這個裝置上，重新整理不會消失</div>
+</div>
+
+<script>
+const BOOKS_KEY = "problem-tracker:books";
+const ITEMS_KEY = "problem-tracker:items";
+
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+let books = JSON.parse(localStorage.getItem(BOOKS_KEY) || "[]");
+let items = JSON.parse(localStorage.getItem(ITEMS_KEY) || "[]");
+let activeBookId = books[0]?.id || null;
+let filter = "all";
+let query = "";
+let bookMenuOpen = false;
+let editingItemId = null;
+let editingBookId = null;
+let stampingId = null;
+
+if (books.length === 0) {
+  const defaultBook = { id: uid(), name: "題本 1", createdAt: Date.now() };
+  const needsMigration = items.some(it => !it.bookId);
+  books = [defaultBook];
+  if (needsMigration) items = items.map(it => ({ ...it, bookId: it.bookId || defaultBook.id }));
+  activeBookId = defaultBook.id;
+}
+
+function persist() {
+  localStorage.setItem(BOOKS_KEY, JSON.stringify(books));
+  localStorage.setItem(ITEMS_KEY, JSON.stringify(items));
+}
+
+function bookStats(bookId) {
+  const list = items.filter(it => it.bookId === bookId);
+  return { done: list.filter(it => it.done).length, total: list.length };
+}
+
+function render() {
+  const switcher = document.getElementById("bookSwitcher");
+  const activeBook = books.find(b => b.id === activeBookId);
+  const st = activeBook ? bookStats(activeBook.id) : { done: 0, total: 0 };
+  switcher.innerHTML = `📖 <span style="flex:1;">${activeBook ? escapeHtml(activeBook.name) : "尚未建立題本"}</span> <span class="mono">${st.total > 0 ? st.done + "/" + st.total : ""}</span> ${bookMenuOpen ? "▲" : "▼"}`;
+
+  const menu = document.getElementById("bookMenu");
+  menu.style.display = bookMenuOpen ? "block" : "none";
+  menu.innerHTML = "";
+  books.forEach(b => {
+    const s = bookStats(b.id);
+    const row = document.createElement("div");
+    row.className = "book-row" + (b.id === activeBookId ? " active" : "");
+    if (editingBookId === b.id) {
+      row.innerHTML = `<input type="text" class="edit-book-input" value="${escapeAttr(b.name)}" /> <span class="mono">${s.done}/${s.total}</span>`;
+      row.querySelector("input").addEventListener("click", e => e.stopPropagation());
+      row.querySelector("input").addEventListener("keydown", e => {
+        if (e.key === "Enter") saveBookName(b.id, e.target.value);
+        if (e.key === "Escape") { editingBookId = null; render(); }
+      });
+      row.querySelector("input").addEventListener("blur", e => saveBookName(b.id, e.target.value));
+    } else {
+      row.innerHTML = `<span style="flex:1;font-size:14px;color:#F3EFE3;">${escapeHtml(b.name)}</span> <span class="mono">${s.done}/${s.total}</span> <button class="icon-btn" data-edit="${b.id}">✎</button> ${books.length > 1 ? `<button class="icon-btn" data-del="${b.id}">🗑</button>` : ""}`;
+      row.addEventListener("click", () => { activeBookId = b.id; bookMenuOpen = false; render(); });
+    }
+    menu.appendChild(row);
+  });
+
+  const addRow = document.createElement("div");
+  addRow.className = "add-book-row";
+  addRow.innerHTML = `<button class="icon-btn" style="color:#D97A3F;font-weight:600;" id="addBookBtnTrigger">＋ 新增題本</button>`;
+  menu.appendChild(addRow);
+
+  menu.querySelectorAll("[data-edit]").forEach(btn => btn.addEventListener("click", e => {
+    e.stopPropagation();
+    editingBookId = btn.getAttribute("data-edit");
+    render();
+    const input = menu.querySelector(".edit-book-input");
+    if (input) { input.focus(); input.select(); }
+  }));
+  menu.querySelectorAll("[data-del]").forEach(btn => btn.addEventListener("click", e => {
+    e.stopPropagation();
+    const id = btn.getAttribute("data-del");
+    const b = books.find(x => x.id === id);
+    const s = bookStats(id);
+    if (confirm(`刪除「${b.name}」？裡面 ${s.total} 題會一併刪除。`)) {
+      books = books.filter(x => x.id !== id);
+      items = items.filter(it => it.bookId !== id);
+      if (activeBookId === id) activeBookId = books[0]?.id || null;
+      persist(); render();
+    }
+  }));
+  const addBookTrigger = document.getElementById("addBookBtnTrigger");
+  if (addBookTrigger) addBookTrigger.addEventListener("click", () => {
+    const name = prompt("新題本名稱");
+    if (name && name.trim()) {
+      const b = { id: uid(), name: name.trim(), createdAt: Date.now() };
+      books.push(b);
+      activeBookId = b.id;
+      bookMenuOpen = false;
+      persist(); render();
+    }
+  });
+
+  document.getElementById("bookEmpty").style.display = books.length === 0 ? "block" : "none";
+  document.getElementById("mainContent").style.display = books.length === 0 ? "none" : "block";
+  if (books.length === 0) return;
+
+  const bookItems = items.filter(it => it.bookId === activeBookId);
+  const total = bookItems.length;
+  const doneCount = bookItems.filter(it => it.done).length;
+  const pct = total === 0 ? 0 : Math.round((doneCount / total) * 100);
+  document.getElementById("statNum").innerHTML = `${doneCount}<span>/${total}</span>`;
+  document.getElementById("pctLabel").textContent = pct + "% 完成率";
+  const fill = document.getElementById("barFill");
+  fill.style.width = pct + "%";
+  fill.style.background = pct === 100 ? "#4FA98F" : "linear-gradient(90deg,#B34A3C,#D97A3F)";
+
+  let list = bookItems;
+  if (filter === "todo") list = list.filter(it => !it.done);
+  if (filter === "done") list = list.filter(it => it.done);
+  if (query.trim()) {
+    const q = query.trim().toLowerCase();
+    list = list.filter(it => it.name.toLowerCase().includes(q) || (it.tag||"").toLowerCase().includes(q));
+  }
+
+  const itemList = document.getElementById("itemList");
+  itemList.innerHTML = "";
+  if (list.length === 0) {
+    const div = document.createElement("div");
+    div.className = "empty";
+    div.textContent = total === 0 ? "這本題本還沒有題目，先在上面新增一筆吧" : "找不到符合條件的題目";
+    itemList.appendChild(div);
+  } else {
+    list.forEach(it => {
+      const row = document.createElement("div");
+      row.className = "item" + (it.done ? " done" : "");
+      const checkClasses = "check" + (it.done ? " done" : "") + (stampingId === it.id ? " stamp" : "");
+      let nameHtml;
+      if (editingItemId === it.id) {
+        nameHtml = `<input type="text" class="item-name-input edit-item-input" value="${escapeAttr(it.name)}" />`;
+      } else {
+        nameHtml = `<div class="item-name${it.done ? " done" : ""}" data-editname="${it.id}" title="點一下編輯名稱">${escapeHtml(it.name)}</div>`;
+      }
+      row.innerHTML = `
+        <button class="check ${checkClasses}" data-toggle="${it.id}">${it.done ? "✓" : ""}</button>
+        <div style="flex:1;min-width:0;">
+          ${nameHtml}
+          ${it.tag ? `<span class="tag-badge">${escapeHtml(it.tag)}</span>` : ""}
+        </div>
+        <button class="icon-btn" data-remove="${it.id}">🗑</button>
+      `;
+      itemList.appendChild(row);
+    });
+    itemList.querySelectorAll("[data-toggle]").forEach(btn => btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-toggle");
+      stampingId = id;
+      render();
+      setTimeout(() => { stampingId = null; }, 260);
+      items = items.map(it => it.id === id ? { ...it, done: !it.done } : it);
+      persist();
+      setTimeout(render, 0);
+    }));
+    itemList.querySelectorAll("[data-remove]").forEach(btn => btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-remove");
+      items = items.filter(it => it.id !== id);
+      persist(); render();
+    }));
+    itemList.querySelectorAll("[data-editname]").forEach(el => el.addEventListener("click", () => {
+      editingItemId = el.getAttribute("data-editname");
+      render();
+      const input = itemList.querySelector(".edit-item-input");
+      if (input) { input.focus(); input.select(); }
+    }));
+    const editInput = itemList.querySelector(".edit-item-input");
+    if (editInput) {
+      editInput.addEventListener("keydown", e => {
+        if (e.key === "Enter") saveItemName(editingItemId, e.target.value);
+        if (e.key === "Escape") { editingItemId = null; render(); }
+      });
+      editInput.addEventListener("blur", e => saveItemName(editingItemId, e.target.value));
+    }
+  }
+}
+
+function saveBookName(id, value) {
+  const trimmed = (value || "").trim();
+  if (trimmed) books = books.map(b => b.id === id ? { ...b, name: trimmed } : b);
+  editingBookId = null;
+  persist(); render();
+}
+
+function saveItemName(id, value) {
+  const trimmed = (value || "").trim();
+  if (trimmed) items = items.map(it => it.id === id ? { ...it, name: trimmed } : it);
+  editingItemId = null;
+  persist(); render();
+}
+
+function escapeHtml(s) {
+  return (s || "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s); }
+
+document.getElementById("bookSwitcher").addEventListener("click", () => {
+  bookMenuOpen = !bookMenuOpen;
+  render();
+});
+
+document.querySelectorAll(".filter-btn").forEach(btn => btn.addEventListener("click", () => {
+  filter = btn.getAttribute("data-filter");
+  document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  render();
+}));
+
+document.getElementById("searchInput").addEventListener("input", e => { query = e.target.value; render(); });
+
+function addItem() {
+  if (!activeBookId) return;
+  const nameInput = document.getElementById("nameInput");
+  const tagInput = document.getElementById("tagInput");
+  const errMsg = document.getElementById("errMsg");
+  const lines = nameInput.value.split("\n").map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) {
+    errMsg.style.display = "block";
+    errMsg.textContent = "題目名稱不能是空的";
+    nameInput.focus();
+    return;
+  }
+  errMsg.style.display = "none";
+  const sharedTag = tagInput.value.trim();
+  const newItems = lines.map(line => {
+    const sepIdx = line.indexOf("|");
+    if (sepIdx !== -1) {
+      const lineName = line.slice(0, sepIdx).trim();
+      const lineTag = line.slice(sepIdx + 1).trim();
+      return { id: uid(), bookId: activeBookId, name: lineName || line, tag: lineTag || sharedTag, done: false, createdAt: Date.now() };
+    }
+    return { id: uid(), bookId: activeBookId, name: line, tag: sharedTag, done: false, createdAt: Date.now() };
+  });
+  items = [...newItems.reverse(), ...items];
+  nameInput.value = "";
+  tagInput.value = "";
+  persist(); render();
+  nameInput.focus();
+}
+
+document.getElementById("addBtn").addEventListener("click", addItem);
+document.getElementById("nameInput").addEventListener("keydown", e => {
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) addItem();
+});
+
+render();
+</script>
+</body>
+</html>
