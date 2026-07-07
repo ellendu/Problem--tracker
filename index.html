@@ -192,6 +192,7 @@
   .tag-pick-btn.active { background: #D97A3F; color: #12151A; border-color: #D97A3F; font-weight: 600; }
   .tag-pick-clear { color: #E08072; border-color: #4A2A28; }
   .tag-pick-close { color: #5C6572; }
+  .tag-pick-new { color: #D97A3F; font-weight: 600; }
   .batch-bar {
     display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
     background: #1B1F26; border: 1px solid #D97A3F; border-radius: 10px;
@@ -280,11 +281,13 @@
 <script>
 const BOOKS_KEY = "problem-tracker:books";
 const ITEMS_KEY = "problem-tracker:items";
+const CUSTOM_TAGS_KEY = "problem-tracker:customTags";
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
 let books = JSON.parse(localStorage.getItem(BOOKS_KEY) || "[]");
 let items = JSON.parse(localStorage.getItem(ITEMS_KEY) || "[]");
+let customTags = JSON.parse(localStorage.getItem(CUSTOM_TAGS_KEY) || "[]");
 let activeBookId = books[0]?.id || null;
 let filter = "all";
 let query = "";
@@ -336,6 +339,24 @@ if (books.length === 0) {
 function persist() {
   localStorage.setItem(BOOKS_KEY, JSON.stringify(books));
   localStorage.setItem(ITEMS_KEY, JSON.stringify(items));
+  localStorage.setItem(CUSTOM_TAGS_KEY, JSON.stringify(customTags));
+}
+
+function getAllTagOptions(usedTags) {
+  const base = [...QUICK_TAGS, ...customTags];
+  const extra = (usedTags || []).filter(t => !base.includes(t));
+  return [...base, ...extra];
+}
+
+function addCustomTag() {
+  const name = prompt("新分類名稱");
+  if (!name || !name.trim()) return null;
+  const trimmed = name.trim();
+  if (!customTags.includes(trimmed) && !QUICK_TAGS.includes(trimmed)) {
+    customTags.push(trimmed);
+    persist();
+  }
+  return trimmed;
 }
 
 function bookStats(bookId) {
@@ -514,13 +535,14 @@ function renderItemRow(it) {
     const usedTags = [...new Set(
       items.filter(x => x.bookId === activeBookId && x.tag && x.tag.trim()).map(x => x.tag.trim())
     )];
-    const combined = [...QUICK_TAGS, ...usedTags.filter(t => !QUICK_TAGS.includes(t))];
+    const combined = getAllTagOptions(usedTags);
     const chips = combined.map(tag =>
       `<button class="tag-pick-btn${it.tag === tag ? " active" : ""}" data-settag="${it.id}" data-tagvalue="${escapeAttr(tag)}">${escapeHtml(tag)}</button>`
     ).join("");
     tagAreaHtml = `
       <div class="tag-picker">
         ${chips}
+        <button class="tag-pick-btn tag-pick-new" data-newtag="${it.id}">＋ 新增分類</button>
         <button class="tag-pick-btn tag-pick-clear" data-settag="${it.id}" data-tagvalue="">清除分類</button>
         <button class="tag-pick-btn tag-pick-close" data-closetag="${it.id}">取消</button>
       </div>
@@ -578,6 +600,17 @@ function attachItemListeners(itemList) {
   }));
   itemList.querySelectorAll("[data-closetag]").forEach(el => el.addEventListener("click", () => {
     editingTagItemId = null;
+    render();
+  }));
+  itemList.querySelectorAll("[data-newtag]").forEach(el => el.addEventListener("click", () => {
+    const id = el.getAttribute("data-newtag");
+    const tag = addCustomTag();
+    if (tag) {
+      pushUndo();
+      items = items.map(it => it.id === id ? { ...it, tag } : it);
+      editingTagItemId = null;
+      persist();
+    }
     render();
   }));
   itemList.querySelectorAll("[data-settag]").forEach(el => el.addEventListener("click", () => {
@@ -661,7 +694,7 @@ function renderBatchBar(bookItems) {
   const usedTags = [...new Set(
     bookItems.filter(it => it.tag && it.tag.trim()).map(it => it.tag.trim())
   )];
-  const combined = [...QUICK_TAGS, ...usedTags.filter(t => !QUICK_TAGS.includes(t))];
+  const combined = getAllTagOptions(usedTags);
   const count = selectedItemIds.size;
   bar.innerHTML = `<span class="batch-label">已選 ${count} 題，套用分類：</span>`;
   combined.forEach(tag => {
@@ -671,6 +704,15 @@ function renderBatchBar(bookItems) {
     btn.addEventListener("click", () => applyBatchTag(tag));
     bar.appendChild(btn);
   });
+  const newTagBtn = document.createElement("button");
+  newTagBtn.className = "batch-tag-btn";
+  newTagBtn.textContent = "＋ 新增分類";
+  newTagBtn.addEventListener("click", () => {
+    const tag = addCustomTag();
+    if (tag) applyBatchTag(tag);
+    else render();
+  });
+  bar.appendChild(newTagBtn);
   const clearBtn = document.createElement("button");
   clearBtn.className = "batch-tag-btn batch-clear-btn";
   clearBtn.textContent = "清除分類";
@@ -821,7 +863,7 @@ function renderQuickTags() {
     items.filter(it => it.bookId === activeBookId && it.tag && it.tag.trim())
       .map(it => it.tag.trim())
   )];
-  const combined = [...QUICK_TAGS, ...usedTags.filter(t => !QUICK_TAGS.includes(t))];
+  const combined = getAllTagOptions(usedTags);
   combined.forEach(tag => {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -834,6 +876,21 @@ function renderQuickTags() {
     });
     wrap.appendChild(btn);
   });
+  const newBtn = document.createElement("button");
+  newBtn.type = "button";
+  newBtn.className = "quick-tag-btn";
+  newBtn.style.color = "#D97A3F";
+  newBtn.style.fontWeight = "600";
+  newBtn.textContent = "＋ 新增分類";
+  newBtn.addEventListener("click", () => {
+    const tag = addCustomTag();
+    if (tag) {
+      tagInput.value = tag;
+    }
+    render();
+    tagInput.focus();
+  });
+  wrap.appendChild(newBtn);
 }
 
 document.getElementById("tagInput").addEventListener("input", syncQuickTagActive);
