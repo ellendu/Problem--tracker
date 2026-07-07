@@ -122,7 +122,7 @@
     text-align: center; color: #5C6572; font-size: 13px;
   }
   .item {
-    display: flex; align-items: center; gap: 12px;
+    display: flex; align-items: flex-start; gap: 12px;
     background: #1B1F26; border: 1px solid #2A2F38; border-radius: 10px;
     padding: 12px 14px; margin-bottom: 8px;
   }
@@ -137,8 +137,8 @@
   .check.done { border-color: #4FA98F; background: #4FA98F; color: #12151A; }
   .check.stamp { transform: scale(1.25) rotate(-8deg); }
   .item-name {
-    font-size: 14.5px; color: #F3EFE3; white-space: nowrap; overflow: hidden;
-    text-overflow: ellipsis; cursor: text;
+    font-size: 14.5px; color: #F3EFE3; white-space: normal; overflow-wrap: break-word;
+    word-break: break-word; cursor: text;
   }
   .item-name.done { text-decoration: line-through; text-decoration-color: #5C6572; }
   .item-name-input {
