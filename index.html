@@ -150,6 +150,17 @@
   }
   .footer-note { margin-top: 24px; font-size: 11px; color: #4A5560; text-align: center; }
   .add-book-row { display: flex; gap: 6px; padding: 2px 4px; }
+  .group-header {
+    display: flex; align-items: center; gap: 10px;
+    margin: 18px 0 8px; padding: 0 2px;
+  }
+  .group-header:first-child { margin-top: 0; }
+  .group-title { font-size: 13px; font-weight: 700; color: #D97A3F; letter-spacing: 0.02em; white-space: nowrap; }
+  .group-bar-track {
+    flex: 1; height: 5px; border-radius: 999px; background: #1B1F26; overflow: hidden; border: 1px solid #2A2F38;
+  }
+  .group-bar-fill { height: 100%; background: #4FA98F; transition: width 0.35s ease; }
+  .group-count { font-family: 'Courier New', monospace; font-size: 11px; color: #7C8894; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -190,6 +201,7 @@
       <button class="filter-btn active" data-filter="all">全部</button>
       <button class="filter-btn" data-filter="todo">未做</button>
       <button class="filter-btn" data-filter="done">已做</button>
+      <button class="filter-btn" id="groupToggleBtn">📊 分類檢視</button>
       <div class="search-wrap">
         <span class="search-icon">🔍</span>
         <input type="text" id="searchInput" placeholder="搜尋..." />
@@ -213,6 +225,7 @@ let items = JSON.parse(localStorage.getItem(ITEMS_KEY) || "[]");
 let activeBookId = books[0]?.id || null;
 let filter = "all";
 let query = "";
+let groupByTag = false;
 let bookMenuOpen = false;
 let editingItemId = null;
 let editingBookId = null;
@@ -329,55 +342,89 @@ function render() {
     div.className = "empty";
     div.textContent = total === 0 ? "這本題本還沒有題目，先在上面新增一筆吧" : "找不到符合條件的題目";
     itemList.appendChild(div);
-  } else {
+  } else if (groupByTag) {
+    const groups = new Map();
     list.forEach(it => {
-      const row = document.createElement("div");
-      row.className = "item" + (it.done ? " done" : "");
-      const checkClasses = "check" + (it.done ? " done" : "") + (stampingId === it.id ? " stamp" : "");
-      let nameHtml;
-      if (editingItemId === it.id) {
-        nameHtml = `<input type="text" class="item-name-input edit-item-input" value="${escapeAttr(it.name)}" />`;
-      } else {
-        nameHtml = `<div class="item-name${it.done ? " done" : ""}" data-editname="${it.id}" title="點一下編輯名稱">${escapeHtml(it.name)}</div>`;
-      }
-      row.innerHTML = `
-        <button class="check ${checkClasses}" data-toggle="${it.id}">${it.done ? "✓" : ""}</button>
-        <div style="flex:1;min-width:0;">
-          ${nameHtml}
-          ${it.tag ? `<span class="tag-badge">${escapeHtml(it.tag)}</span>` : ""}
-        </div>
-        <button class="icon-btn" data-remove="${it.id}">🗑</button>
-      `;
-      itemList.appendChild(row);
+      const key = it.tag && it.tag.trim() ? it.tag.trim() : "未分類";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(it);
     });
-    itemList.querySelectorAll("[data-toggle]").forEach(btn => btn.addEventListener("click", () => {
-      const id = btn.getAttribute("data-toggle");
-      stampingId = id;
-      render();
-      setTimeout(() => { stampingId = null; }, 260);
-      items = items.map(it => it.id === id ? { ...it, done: !it.done } : it);
-      persist();
-      setTimeout(render, 0);
-    }));
-    itemList.querySelectorAll("[data-remove]").forEach(btn => btn.addEventListener("click", () => {
-      const id = btn.getAttribute("data-remove");
-      items = items.filter(it => it.id !== id);
-      persist(); render();
-    }));
-    itemList.querySelectorAll("[data-editname]").forEach(el => el.addEventListener("click", () => {
-      editingItemId = el.getAttribute("data-editname");
-      render();
-      const input = itemList.querySelector(".edit-item-input");
-      if (input) { input.focus(); input.select(); }
-    }));
-    const editInput = itemList.querySelector(".edit-item-input");
-    if (editInput) {
-      editInput.addEventListener("keydown", e => {
-        if (e.key === "Enter") saveItemName(editingItemId, e.target.value);
-        if (e.key === "Escape") { editingItemId = null; render(); }
-      });
-      editInput.addEventListener("blur", e => saveItemName(editingItemId, e.target.value));
-    }
+    const order = [];
+    bookItems.forEach(it => {
+      const key = it.tag && it.tag.trim() ? it.tag.trim() : "未分類";
+      if (!order.includes(key)) order.push(key);
+    });
+    order.filter(k => groups.has(k)).forEach(key => {
+      const groupItems = groups.get(key);
+      const groupDone = groupItems.filter(it => it.done).length;
+      const groupTotal = groupItems.length;
+      const groupPct = groupTotal === 0 ? 0 : Math.round((groupDone / groupTotal) * 100);
+      const header = document.createElement("div");
+      header.className = "group-header";
+      header.innerHTML = `
+        <span class="group-title">${escapeHtml(key)}</span>
+        <div class="group-bar-track"><div class="group-bar-fill" style="width:${groupPct}%;"></div></div>
+        <span class="group-count">${groupDone}/${groupTotal}</span>
+      `;
+      itemList.appendChild(header);
+      groupItems.forEach(it => itemList.appendChild(renderItemRow(it)));
+    });
+    attachItemListeners(itemList);
+  } else {
+    list.forEach(it => itemList.appendChild(renderItemRow(it)));
+    attachItemListeners(itemList);
+  }
+}
+
+function renderItemRow(it) {
+  const row = document.createElement("div");
+  row.className = "item" + (it.done ? " done" : "");
+  const checkClasses = "check" + (it.done ? " done" : "") + (stampingId === it.id ? " stamp" : "");
+  let nameHtml;
+  if (editingItemId === it.id) {
+    nameHtml = `<input type="text" class="item-name-input edit-item-input" value="${escapeAttr(it.name)}" />`;
+  } else {
+    nameHtml = `<div class="item-name${it.done ? " done" : ""}" data-editname="${it.id}" title="點一下編輯名稱">${escapeHtml(it.name)}</div>`;
+  }
+  row.innerHTML = `
+    <button class="check ${checkClasses}" data-toggle="${it.id}">${it.done ? "✓" : ""}</button>
+    <div style="flex:1;min-width:0;">
+      ${nameHtml}
+      ${it.tag ? `<span class="tag-badge">${escapeHtml(it.tag)}</span>` : ""}
+    </div>
+    <button class="icon-btn" data-remove="${it.id}">🗑</button>
+  `;
+  return row;
+}
+
+function attachItemListeners(itemList) {
+  itemList.querySelectorAll("[data-toggle]").forEach(btn => btn.addEventListener("click", () => {
+    const id = btn.getAttribute("data-toggle");
+    stampingId = id;
+    render();
+    setTimeout(() => { stampingId = null; }, 260);
+    items = items.map(it => it.id === id ? { ...it, done: !it.done } : it);
+    persist();
+    setTimeout(render, 0);
+  }));
+  itemList.querySelectorAll("[data-remove]").forEach(btn => btn.addEventListener("click", () => {
+    const id = btn.getAttribute("data-remove");
+    items = items.filter(it => it.id !== id);
+    persist(); render();
+  }));
+  itemList.querySelectorAll("[data-editname]").forEach(el => el.addEventListener("click", () => {
+    editingItemId = el.getAttribute("data-editname");
+    render();
+    const input = itemList.querySelector(".edit-item-input");
+    if (input) { input.focus(); input.select(); }
+  }));
+  const editInput = itemList.querySelector(".edit-item-input");
+  if (editInput) {
+    editInput.addEventListener("keydown", e => {
+      if (e.key === "Enter") saveItemName(editingItemId, e.target.value);
+      if (e.key === "Escape") { editingItemId = null; render(); }
+    });
+    editInput.addEventListener("blur", e => saveItemName(editingItemId, e.target.value));
   }
 }
 
@@ -405,14 +452,20 @@ document.getElementById("bookSwitcher").addEventListener("click", () => {
   render();
 });
 
-document.querySelectorAll(".filter-btn").forEach(btn => btn.addEventListener("click", () => {
+document.querySelectorAll(".filter-btn[data-filter]").forEach(btn => btn.addEventListener("click", () => {
   filter = btn.getAttribute("data-filter");
-  document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll(".filter-btn[data-filter]").forEach(b => b.classList.remove("active"));
   btn.classList.add("active");
   render();
 }));
 
 document.getElementById("searchInput").addEventListener("input", e => { query = e.target.value; render(); });
+
+document.getElementById("groupToggleBtn").addEventListener("click", () => {
+  groupByTag = !groupByTag;
+  document.getElementById("groupToggleBtn").classList.toggle("active", groupByTag);
+  render();
+});
 
 function addItem() {
   if (!activeBookId) return;
