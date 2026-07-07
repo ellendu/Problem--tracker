@@ -254,7 +254,7 @@
       <button class="filter-btn" data-filter="todo">未做</button>
       <button class="filter-btn" data-filter="done">已做</button>
       <button class="filter-btn" id="groupToggleBtn">📊 分類檢視</button>
-      <button class="filter-btn" id="batchToggleBtn">☑️ 批次加分類</button>
+      <button class="filter-btn" id="batchToggleBtn">☑️ 批次操作</button>
       <div class="search-wrap">
         <span class="search-icon">🔍</span>
         <input type="text" id="searchInput" placeholder="搜尋..." />
@@ -268,6 +268,8 @@
 
   <div class="footer-note">
     資料會自動儲存在這個裝置上，重新整理不會消失<br/>
+    <button class="icon-btn" id="undoBtn" style="text-decoration:underline;color:#D97A3F;font-weight:600;">↩ 復原</button>
+    ・
     <button class="icon-btn" id="exportBtn" style="text-decoration:underline;color:#8A9A97;">匯出備份</button>
     ・
     <button class="icon-btn" id="importBtn" style="text-decoration:underline;color:#8A9A97;">匯入備份</button>
@@ -295,6 +297,33 @@ let editingTagItemId = null;
 let stampingId = null;
 let batchMode = false;
 let selectedItemIds = new Set();
+let undoStack = [];
+const UNDO_LIMIT = 30;
+
+function pushUndo() {
+  undoStack.push(JSON.stringify({ books, items }));
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  refreshUndoBtn();
+}
+
+function undo() {
+  if (undoStack.length === 0) return;
+  const snapshot = JSON.parse(undoStack.pop());
+  books = snapshot.books;
+  items = snapshot.items;
+  if (!books.find(b => b.id === activeBookId)) activeBookId = books[0]?.id || null;
+  persist();
+  refreshUndoBtn();
+  render();
+}
+
+function refreshUndoBtn() {
+  const btn = document.getElementById("undoBtn");
+  if (!btn) return;
+  btn.disabled = undoStack.length === 0;
+  btn.style.opacity = undoStack.length === 0 ? "0.4" : "1";
+  btn.textContent = `↩ 復原${undoStack.length > 0 ? "（" + undoStack.length + "）" : ""}`;
+}
 
 if (books.length === 0) {
   const defaultBook = { id: uid(), name: "題本 1", createdAt: Date.now() };
@@ -373,6 +402,7 @@ function renderInner() {
     const b = books.find(x => x.id === id);
     const s = bookStats(id);
     if (confirm(`刪除「${b.name}」？裡面 ${s.total} 題會一併刪除。`)) {
+      pushUndo();
       books = books.filter(x => x.id !== id);
       items = items.filter(it => it.bookId !== id);
       if (activeBookId === id) activeBookId = books[0]?.id || null;
@@ -383,6 +413,7 @@ function renderInner() {
   if (addBookTrigger) addBookTrigger.addEventListener("click", () => {
     const name = prompt("新題本名稱");
     if (name && name.trim()) {
+      pushUndo();
       const b = { id: uid(), name: name.trim(), createdAt: Date.now() };
       books.push(b);
       activeBookId = b.id;
@@ -524,12 +555,14 @@ function attachItemListeners(itemList) {
     stampingId = id;
     render();
     setTimeout(() => { stampingId = null; }, 260);
+    pushUndo();
     items = items.map(it => it.id === id ? { ...it, done: !it.done } : it);
     persist();
     setTimeout(render, 0);
   }));
   itemList.querySelectorAll("[data-remove]").forEach(btn => btn.addEventListener("click", () => {
     const id = btn.getAttribute("data-remove");
+    pushUndo();
     items = items.filter(it => it.id !== id);
     persist(); render();
   }));
@@ -550,6 +583,7 @@ function attachItemListeners(itemList) {
   itemList.querySelectorAll("[data-settag]").forEach(el => el.addEventListener("click", () => {
     const id = el.getAttribute("data-settag");
     const value = el.getAttribute("data-tagvalue");
+    pushUndo();
     items = items.map(it => it.id === id ? { ...it, tag: value } : it);
     editingTagItemId = null;
     persist(); render();
@@ -566,14 +600,20 @@ function attachItemListeners(itemList) {
 
 function saveBookName(id, value) {
   const trimmed = (value || "").trim();
-  if (trimmed) books = books.map(b => b.id === id ? { ...b, name: trimmed } : b);
+  if (trimmed) {
+    pushUndo();
+    books = books.map(b => b.id === id ? { ...b, name: trimmed } : b);
+  }
   editingBookId = null;
   persist(); render();
 }
 
 function saveItemName(id, value) {
   const trimmed = (value || "").trim();
-  if (trimmed) items = items.map(it => it.id === id ? { ...it, name: trimmed } : it);
+  if (trimmed) {
+    pushUndo();
+    items = items.map(it => it.id === id ? { ...it, name: trimmed } : it);
+  }
   editingItemId = null;
   persist(); render();
 }
@@ -647,6 +687,37 @@ function renderBatchBar(bookItems) {
     render();
   });
   bar.appendChild(cancelBtn);
+
+  const otherBooks = books.filter(b => b.id !== activeBookId);
+  if (otherBooks.length > 0) {
+    const moveRow = document.createElement("div");
+    moveRow.style.cssText = "width:100%;display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:4px;";
+    const moveLabel = document.createElement("span");
+    moveLabel.className = "batch-label";
+    moveLabel.textContent = "搬到其他題本：";
+    moveRow.appendChild(moveLabel);
+    otherBooks.forEach(b => {
+      const btn = document.createElement("button");
+      btn.className = "batch-tag-btn";
+      btn.textContent = b.name;
+      btn.addEventListener("click", () => moveSelectedToBook(b.id));
+      moveRow.appendChild(btn);
+    });
+    bar.appendChild(moveRow);
+  }
+}
+
+function moveSelectedToBook(targetBookId) {
+  if (selectedItemIds.size === 0) {
+    alert("先勾選要搬移的題目");
+    return;
+  }
+  const targetBook = books.find(b => b.id === targetBookId);
+  if (!confirm(`把已選的 ${selectedItemIds.size} 題搬到「${targetBook.name}」？`)) return;
+  pushUndo();
+  items = items.map(it => selectedItemIds.has(it.id) ? { ...it, bookId: targetBookId } : it);
+  selectedItemIds.clear();
+  persist(); render();
 }
 
 function applyBatchTag(tag) {
@@ -654,10 +725,14 @@ function applyBatchTag(tag) {
     alert("先勾選要套用分類的題目");
     return;
   }
+  pushUndo();
   items = items.map(it => selectedItemIds.has(it.id) ? { ...it, tag } : it);
   selectedItemIds.clear();
   persist(); render();
 }
+
+document.getElementById("undoBtn").addEventListener("click", undo);
+refreshUndoBtn();
 
 document.getElementById("exportBtn").addEventListener("click", () => {
   const backup = { books, items, exportedAt: new Date().toISOString() };
@@ -685,6 +760,7 @@ document.getElementById("importFile").addEventListener("change", (e) => {
       const data = JSON.parse(evt.target.result);
       if (!data.books || !data.items) throw new Error("格式不正確");
       if (!confirm(`確定要匯入嗎？這會覆蓋目前的 ${books.length} 本題本、${items.length} 題資料。`)) return;
+      pushUndo();
       books = data.books;
       items = data.items;
       activeBookId = books[0]?.id || null;
@@ -722,6 +798,7 @@ function addItem() {
     }
     return { id: uid(), bookId: activeBookId, name: line, tag: sharedTag, done: false, createdAt: Date.now() };
   });
+  pushUndo();
   items = [...newItems.reverse(), ...items];
   nameInput.value = "";
   tagInput.value = "";
