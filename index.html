@@ -173,6 +173,25 @@
   .tag-tab .tt-name { font-weight: 600; }
   .tag-tab .tt-count { font-family: 'Courier New', monospace; font-size: 10.5px; color: #7C8894; }
   .tag-tab.active .tt-count { color: #D97A3F; }
+  .quick-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .quick-tag-btn {
+    background: #12151A; border: 1px solid #2A2F38; color: #8A9A97;
+    border-radius: 999px; padding: 4px 10px; font-size: 12px; cursor: pointer;
+  }
+  .quick-tag-btn.active { background: #D97A3F; color: #12151A; border-color: #D97A3F; font-weight: 600; }
+  .tag-add-btn {
+    display: inline-block; margin-top: 4px; font-size: 10.5px; color: #7C8894;
+    background: transparent; border: 1px dashed #2A2F38; border-radius: 4px;
+    padding: 1px 8px; cursor: pointer;
+  }
+  .tag-picker { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .tag-pick-btn {
+    background: #12151A; border: 1px solid #2A2F38; color: #8A9A97;
+    border-radius: 999px; padding: 3px 10px; font-size: 11.5px; cursor: pointer;
+  }
+  .tag-pick-btn.active { background: #D97A3F; color: #12151A; border-color: #D97A3F; font-weight: 600; }
+  .tag-pick-clear { color: #E08072; border-color: #4A2A28; }
+  .tag-pick-close { color: #5C6572; }
 </style>
 </head>
 <body>
@@ -206,6 +225,7 @@
         </div>
       </div>
       <div class="hint">提示：Ctrl/⌘ + Enter 可快速送出</div>
+      <div class="quick-tags" id="quickTags"></div>
       <div class="err" id="errMsg" style="display:none;"></div>
     </div>
 
@@ -248,6 +268,7 @@ let selectedGroupTag = null;
 let bookMenuOpen = false;
 let editingItemId = null;
 let editingBookId = null;
+let editingTagItemId = null;
 let stampingId = null;
 
 if (books.length === 0) {
@@ -281,6 +302,7 @@ function render() {
 }
 
 function renderInner() {
+  renderQuickTags();
   const switcher = document.getElementById("bookSwitcher");
   const activeBook = books.find(b => b.id === activeBookId);
   const st = activeBook ? bookStats(activeBook.id) : { done: 0, total: 0 };
@@ -428,11 +450,34 @@ function renderItemRow(it) {
   } else {
     nameHtml = `<div class="item-name${it.done ? " done" : ""}" data-editname="${it.id}" title="點一下編輯名稱">${escapeHtml(it.name)}</div>`;
   }
+
+  let tagAreaHtml;
+  if (editingTagItemId === it.id) {
+    const usedTags = [...new Set(
+      items.filter(x => x.bookId === activeBookId && x.tag && x.tag.trim()).map(x => x.tag.trim())
+    )];
+    const combined = [...QUICK_TAGS, ...usedTags.filter(t => !QUICK_TAGS.includes(t))];
+    const chips = combined.map(tag =>
+      `<button class="tag-pick-btn${it.tag === tag ? " active" : ""}" data-settag="${it.id}" data-tagvalue="${escapeAttr(tag)}">${escapeHtml(tag)}</button>`
+    ).join("");
+    tagAreaHtml = `
+      <div class="tag-picker">
+        ${chips}
+        <button class="tag-pick-btn tag-pick-clear" data-settag="${it.id}" data-tagvalue="">清除分類</button>
+        <button class="tag-pick-btn tag-pick-close" data-closetag="${it.id}">取消</button>
+      </div>
+    `;
+  } else if (it.tag) {
+    tagAreaHtml = `<span class="tag-badge" data-edittag="${it.id}" title="點一下修改分類">${escapeHtml(it.tag)}</span>`;
+  } else {
+    tagAreaHtml = `<button class="tag-add-btn" data-edittag="${it.id}">＋ 分類</button>`;
+  }
+
   row.innerHTML = `
     <button class="check ${checkClasses}" data-toggle="${it.id}">${it.done ? "✓" : ""}</button>
     <div style="flex:1;min-width:0;">
       ${nameHtml}
-      ${it.tag ? `<span class="tag-badge">${escapeHtml(it.tag)}</span>` : ""}
+      ${tagAreaHtml}
     </div>
     <button class="icon-btn" data-remove="${it.id}">🗑</button>
   `;
@@ -459,6 +504,21 @@ function attachItemListeners(itemList) {
     render();
     const input = itemList.querySelector(".edit-item-input");
     if (input) { input.focus(); input.select(); }
+  }));
+  itemList.querySelectorAll("[data-edittag]").forEach(el => el.addEventListener("click", () => {
+    editingTagItemId = el.getAttribute("data-edittag");
+    render();
+  }));
+  itemList.querySelectorAll("[data-closetag]").forEach(el => el.addEventListener("click", () => {
+    editingTagItemId = null;
+    render();
+  }));
+  itemList.querySelectorAll("[data-settag]").forEach(el => el.addEventListener("click", () => {
+    const id = el.getAttribute("data-settag");
+    const value = el.getAttribute("data-tagvalue");
+    items = items.map(it => it.id === id ? { ...it, tag: value } : it);
+    editingTagItemId = null;
+    persist(); render();
   }));
   const editInput = itemList.querySelector(".edit-item-input");
   if (editInput) {
@@ -583,6 +643,41 @@ document.getElementById("addBtn").addEventListener("click", addItem);
 document.getElementById("nameInput").addEventListener("keydown", e => {
   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) addItem();
 });
+
+const QUICK_TAGS = ["初學", "進階", "考前複習", "特殊主題", "重要題型"];
+
+function renderQuickTags() {
+  const wrap = document.getElementById("quickTags");
+  const tagInput = document.getElementById("tagInput");
+  wrap.innerHTML = "";
+  const usedTags = [...new Set(
+    items.filter(it => it.bookId === activeBookId && it.tag && it.tag.trim())
+      .map(it => it.tag.trim())
+  )];
+  const combined = [...QUICK_TAGS, ...usedTags.filter(t => !QUICK_TAGS.includes(t))];
+  combined.forEach(tag => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "quick-tag-btn" + (tagInput.value.trim() === tag ? " active" : "");
+    btn.textContent = tag;
+    btn.addEventListener("click", () => {
+      tagInput.value = tagInput.value.trim() === tag ? "" : tag;
+      syncQuickTagActive();
+      tagInput.focus();
+    });
+    wrap.appendChild(btn);
+  });
+}
+
+document.getElementById("tagInput").addEventListener("input", syncQuickTagActive);
+
+function syncQuickTagActive() {
+  const tagInput = document.getElementById("tagInput");
+  const current = tagInput.value.trim();
+  document.querySelectorAll("#quickTags .quick-tag-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.textContent === current);
+  });
+}
 
 render();
 </script>
