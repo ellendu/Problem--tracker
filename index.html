@@ -192,6 +192,26 @@
   .tag-pick-btn.active { background: #D97A3F; color: #12151A; border-color: #D97A3F; font-weight: 600; }
   .tag-pick-clear { color: #E08072; border-color: #4A2A28; }
   .tag-pick-close { color: #5C6572; }
+  .batch-bar {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    background: #1B1F26; border: 1px solid #D97A3F; border-radius: 10px;
+    padding: 10px 12px; margin-bottom: 14px;
+  }
+  .batch-bar .batch-label { font-size: 12px; color: #8A9A97; margin-right: 4px; white-space: nowrap; }
+  .batch-tag-btn {
+    background: #12151A; border: 1px solid #2A2F38; color: #8A9A97;
+    border-radius: 999px; padding: 5px 12px; font-size: 12.5px; cursor: pointer;
+  }
+  .batch-tag-btn:hover { border-color: #D97A3F; color: #F3EFE3; }
+  .batch-clear-btn { color: #E08072; border-color: #4A2A28; }
+  .batch-cancel-btn { color: #5C6572; margin-left: auto; }
+  .item-checkbox {
+    flex-shrink: 0; width: 20px; height: 20px; border-radius: 5px;
+    border: 2px solid #4A5560; background: transparent; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; color: #12151A; font-size: 12px;
+  }
+  .item-checkbox.checked { background: #D97A3F; border-color: #D97A3F; }
+  .item.batch-mode { padding-left: 10px; }
 </style>
 </head>
 <body>
@@ -234,11 +254,14 @@
       <button class="filter-btn" data-filter="todo">未做</button>
       <button class="filter-btn" data-filter="done">已做</button>
       <button class="filter-btn" id="groupToggleBtn">📊 分類檢視</button>
+      <button class="filter-btn" id="batchToggleBtn">☑️ 批次加分類</button>
       <div class="search-wrap">
         <span class="search-icon">🔍</span>
         <input type="text" id="searchInput" placeholder="搜尋..." />
       </div>
     </div>
+
+    <div id="batchBar" class="batch-bar" style="display:none;"></div>
 
     <div id="itemList"></div>
   </div>
@@ -270,6 +293,8 @@ let editingItemId = null;
 let editingBookId = null;
 let editingTagItemId = null;
 let stampingId = null;
+let batchMode = false;
+let selectedItemIds = new Set();
 
 if (books.length === 0) {
   const defaultBook = { id: uid(), name: "題本 1", createdAt: Date.now() };
@@ -388,6 +413,8 @@ function renderInner() {
     list = list.filter(it => it.name.toLowerCase().includes(q) || (it.tag||"").toLowerCase().includes(q));
   }
 
+  renderBatchBar(bookItems);
+
   const itemList = document.getElementById("itemList");
   itemList.innerHTML = "";
 
@@ -474,6 +501,7 @@ function renderItemRow(it) {
   }
 
   row.innerHTML = `
+    ${batchMode ? `<button class="item-checkbox${selectedItemIds.has(it.id) ? " checked" : ""}" data-select="${it.id}">${selectedItemIds.has(it.id) ? "✓" : ""}</button>` : ""}
     <button class="check ${checkClasses}" data-toggle="${it.id}">${it.done ? "✓" : ""}</button>
     <div style="flex:1;min-width:0;">
       ${nameHtml}
@@ -485,6 +513,12 @@ function renderItemRow(it) {
 }
 
 function attachItemListeners(itemList) {
+  itemList.querySelectorAll("[data-select]").forEach(btn => btn.addEventListener("click", () => {
+    const id = btn.getAttribute("data-select");
+    if (selectedItemIds.has(id)) selectedItemIds.delete(id);
+    else selectedItemIds.add(id);
+    render();
+  }));
   itemList.querySelectorAll("[data-toggle]").forEach(btn => btn.addEventListener("click", () => {
     const id = btn.getAttribute("data-toggle");
     stampingId = id;
@@ -568,6 +602,62 @@ document.getElementById("groupToggleBtn").addEventListener("click", () => {
   document.getElementById("groupToggleBtn").classList.toggle("active", groupByTag);
   render();
 });
+
+document.getElementById("batchToggleBtn").addEventListener("click", () => {
+  batchMode = !batchMode;
+  if (!batchMode) selectedItemIds.clear();
+  document.getElementById("batchToggleBtn").classList.toggle("active", batchMode);
+  render();
+});
+
+function renderBatchBar(bookItems) {
+  const bar = document.getElementById("batchBar");
+  if (!batchMode) {
+    bar.style.display = "none";
+    bar.innerHTML = "";
+    return;
+  }
+  bar.style.display = "flex";
+  const usedTags = [...new Set(
+    bookItems.filter(it => it.tag && it.tag.trim()).map(it => it.tag.trim())
+  )];
+  const combined = [...QUICK_TAGS, ...usedTags.filter(t => !QUICK_TAGS.includes(t))];
+  const count = selectedItemIds.size;
+  bar.innerHTML = `<span class="batch-label">已選 ${count} 題，套用分類：</span>`;
+  combined.forEach(tag => {
+    const btn = document.createElement("button");
+    btn.className = "batch-tag-btn";
+    btn.textContent = tag;
+    btn.addEventListener("click", () => applyBatchTag(tag));
+    bar.appendChild(btn);
+  });
+  const clearBtn = document.createElement("button");
+  clearBtn.className = "batch-tag-btn batch-clear-btn";
+  clearBtn.textContent = "清除分類";
+  clearBtn.addEventListener("click", () => applyBatchTag(""));
+  bar.appendChild(clearBtn);
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.className = "batch-tag-btn batch-cancel-btn";
+  cancelBtn.textContent = "結束批次模式";
+  cancelBtn.addEventListener("click", () => {
+    batchMode = false;
+    selectedItemIds.clear();
+    document.getElementById("batchToggleBtn").classList.remove("active");
+    render();
+  });
+  bar.appendChild(cancelBtn);
+}
+
+function applyBatchTag(tag) {
+  if (selectedItemIds.size === 0) {
+    alert("先勾選要套用分類的題目");
+    return;
+  }
+  items = items.map(it => selectedItemIds.has(it.id) ? { ...it, tag } : it);
+  selectedItemIds.clear();
+  persist(); render();
+}
 
 document.getElementById("exportBtn").addEventListener("click", () => {
   const backup = { books, items, exportedAt: new Date().toISOString() };
